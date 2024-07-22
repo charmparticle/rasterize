@@ -1,0 +1,59 @@
+#!/bin/bash
+pdf=$1
+if [[ ${pdf: -4} == '.pdf' ]]
+then
+    true
+else
+    echo "rasterize - rasterizes a pdf file and prints it."
+    exit
+fi
+
+deps=('gs' 'pdfseparate' 'convert')
+passfail="pass"
+for dep in ${deps[@]}
+do
+    if which $dep
+    then
+        true
+    else
+        passfail="fail"
+        if [[ "$dep" == "convert" ]]
+        then
+            echo "Please install imagemagick"
+        elif [[ "$dep" == "gs" ]]
+        then
+            echo "Please install ghostscript"
+        else
+            echo "Please install $dep"
+        fi
+    fi
+done
+if [[ $passfail == "fail" ]]
+then
+    exit
+fi
+nn=$(echo "$pdf" | sed 's/.pdf/_optimized.pdf/')
+#optimize the pdf, so that pdfseparate produces reasonable output
+gs -sDEVICE=pdfwrite -dCompatibilityLevel=1.4 -dNOPAUSE -dQUIET -dBATCH -sOutputFile=$nn $pdf
+#setup a reasonable naming convention for pdfseparate
+pdf_paged=$(echo "$nn" | sed 's/.pdf/-page%d.pdf/')
+mkdir -p /tmp/pages/raster
+mv $nn /tmp/pages
+cd /tmp/pages
+#break up the pdf into separate pages
+pdfseparate $nn $pdf_paged
+mv *-page* raster
+cd raster
+for i in *pdf
+do
+    nn=$(echo $i | sed 's/.pdf/_rs.pdf/')
+    #rasterize each page at 600 dpi.
+    #This assumes your printer can handle 600 dpi. Text looks nice and crisp at this resolution.
+    convert -density 600 +antialias $i $nn
+done
+#print the rasterized pages.
+#This assumes you have a default printer configured and that's what you want to print to.
+lpr *_rs.pdf
+cd ~
+#remove the pdf files we created. Your original pdf will remain wherever it was originally.
+rm -r /tmp/pages
